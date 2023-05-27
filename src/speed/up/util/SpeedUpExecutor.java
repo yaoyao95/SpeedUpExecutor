@@ -60,29 +60,28 @@ public class SpeedUpExecutor {
     public SpeedUpConfig getConfig() {
         return config;
     }
-
-    public void aggregateExecute(Runnable... runners) throws InterruptedException {
+    /**用线程池来并行执行这些子任务，所有任务执行完后才返回*/
+    public void batchExecute(Runnable... subTasks) throws InterruptedException {
         long start = System.currentTimeMillis();
 //        System.out.println("-------------speed up executor start");
         if (!config.isEnable()) {
-            Arrays.stream(runners).forEach(Runnable::run);
+            Arrays.stream(subTasks).forEach(Runnable::run);
             System.out.println("speed up executor switch is off,  degrade to execute Serially."  + " done, Time-consuming-"+(System.currentTimeMillis() - start) + "ms");
             return;
         }
 
-        CountDownLatch latchForPerTask = new CountDownLatch(runners.length);
+        CountDownLatch latchForPerTask = new CountDownLatch(subTasks.length);
         boolean ifWorkerThreadEnough = true;
         try{
             synchronized (mySpeedUpPoolExecutor()) {
                 if (mySpeedUpPoolExecutor().getMaximumPoolSize() - mySpeedUpPoolExecutor().getActiveCount() >
-                        runners.length + config.getBufferThreadWorkSizeForInaccuracyOfActiveCount()) {
+                        subTasks.length + config.getBufferThreadWorkSizeForInaccuracyOfActiveCount()) {
                     //worker还足够执行任务
-                    for (int subTaskIndex = 0; subTaskIndex < runners.length; subTaskIndex++) {
+                    for (int subTaskIndex = 0; subTaskIndex < subTasks.length; subTaskIndex++) {
                         int finalSubTaskIndex = subTaskIndex;
                         mySpeedUpPoolExecutor.submit(() -> {
-                            // 线程睡眠 n ms，可以等同于模拟业务耗时n ms
                             try {
-                                runners[finalSubTaskIndex].run();
+                                subTasks[finalSubTaskIndex].run();
                             } finally {
                                 latchForPerTask.countDown();
                             }
@@ -96,19 +95,19 @@ public class SpeedUpExecutor {
         } catch (Exception e) {
             //一般不会进来这里, 进来救表示worker 不够了，原因一般是 统计worker知识预估，不一定准确
             e.printStackTrace();
-            Arrays.stream(runners).forEach(Runnable::run);
+            Arrays.stream(subTasks).forEach(Runnable::run);
             System.out.println("thread worker is not enough, but it shouldn't. degrade to execute Serially. "+ " done, Time-consuming-"+(System.currentTimeMillis() - start)+"ms");
             return;
         }
         if (!ifWorkerThreadEnough) {
-            Arrays.stream(runners).forEach(Runnable::run);
+            Arrays.stream(subTasks).forEach(Runnable::run);
             System.out.println("thread worker is not enough. degrade to execute Serially. "  + " done, Time-consuming-"+(System.currentTimeMillis() - start) + "ms");
             return;
         }
         //worker 足够的情况
         if (!latchForPerTask.await(config.getMaxTimeLimitForOneAggregateExecuteInMillSec(),TimeUnit.MILLISECONDS)) {
             //---超时---
-            Arrays.stream(runners).forEach(Runnable::run);
+            Arrays.stream(subTasks).forEach(Runnable::run);
             //一般要继续执行，而不是降级，等worker执行完。所以，配置Config.maxTimeLimitForOneAggregateExecuteInMillSec这个值大些好。
             System.out.println("time out. over than max limit time-" + config.getMaxTimeLimitForOneAggregateExecuteInMillSec()  + "ms, degrade to execute Serially. done, Time-consuming-"+(System.currentTimeMillis() - start) + "ms");
             return;
@@ -120,6 +119,13 @@ public class SpeedUpExecutor {
     public static void main(String[] args) throws InterruptedException {
         SpeedUpMockConfig mockConfig = new SpeedUpMockConfig();
         testAvgExecuteTime(mockConfig);
+        SpeedUpConfig config = new SpeedUpConfig();
+        config.setEnableMonitor(false);
+        config.setEnable(true);
+        config.setMonitorInitPeriodInSec(1);
+        SpeedUpExecutor executor = new SpeedUpExecutor(config);
+
+        //----模拟业务请求----
         List<Runnable> runnables = new ArrayList<>();
         ThreadPoolExecutor webContainerThreadPoolExecutor = new ThreadPoolExecutor(1000, 1000, 30000, TimeUnit.SECONDS,
 //                new LinkedBlockingQueue<>(1),
@@ -134,15 +140,14 @@ public class SpeedUpExecutor {
                 SpeedUpMockConfig.sleep(mockConfig.calcExecuteTimeForOneQuery());
             });
         }
-        SpeedUpConfig config = new SpeedUpConfig();
-        config.setMonitorInitPeriodInSec(1);
-        SpeedUpExecutor executor = new SpeedUpExecutor(config);
+
+
         for (int taskIndex = 0; taskIndex < mockConfig.taskCount; taskIndex++) {
             //平均多少毫秒，单个task请求
             Thread.sleep((long) (Math.random() * mockConfig.avgIntervalPerTaskMillSec * 2));
             mockConfig.webContainerThreadPoolExecutor().submit(() -> {
                 try {
-                    executor.aggregateExecute(runnables.toArray(Runnable[]::new));
+                    executor.batchExecute(runnables.toArray(Runnable[]::new));
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 } finally {
@@ -156,6 +161,7 @@ public class SpeedUpExecutor {
             System.out.println("************** 总任务 超时");
         }
 
+        //用法示例1
 //        executor.aggregateExecute(() -> {
 //            SpeedUpMockConfig.sleep(mockConfig.calcExecuteTimeForOneQuery());
 //        },() -> {
@@ -164,21 +170,31 @@ public class SpeedUpExecutor {
 //            SpeedUpMockConfig.sleep(mockConfig.calcExecuteTimeForOneQuery());
 //        });
 //
-//        executor.aggregateExecute(runnables.toArray(Runnable[]::new));
+//        executor.batchExecute(runnables.toArray(Runnable[]::new));
 
-        int a1 = 1; int b1 = 2; AtomicInteger sum = new AtomicInteger();
-        int a2 = 3; int b2 = 4;
-        ArrayList<String> strs = new ArrayList<>();
-        executor.aggregateExecute(() ->{
-            sum.set(a1 + b1);
-        },() -> {
-            sum.set(a2 + b2);
-        },() -> {
-            System.out.println("test");
-        },() -> {
-            strs.add(String.valueOf(a1));
-        });
-        System.out.println(sum + "  " + strs);
+//        //用法示例2
+//        int a1 = 1; int b1 = 2; AtomicInteger sum = new AtomicInteger();
+//        int a2 = 3; int b2 = 4;
+//        ArrayList<String> strings = new ArrayList<>();
+//        executor.batchExecute(() ->{
+//            sum.set(a1 + b1);
+//        },() -> {
+//            sum.set(a2 + b2);
+//        },() -> {
+//            System.out.println("test");
+//        },() -> {
+//            strings.add(String.valueOf(a1));
+//        });
+//        System.out.println(sum + "  " + strings);
+
+//        //用法示例3
+//        List<Runnable> subTasks = new ArrayList<>();
+//        for (int i = 0; i < mockConfig.queryCountPerTask; i++) {
+//            subTasks.add(() -> {
+//                SpeedUpMockConfig.sleep(mockConfig.calcExecuteTimeForOneQuery());
+//            });
+//        }
+//        executor.batchExecute(subTasks.toArray(Runnable[]::new));
     }
 
     private static void testAvgExecuteTime(SpeedUpMockConfig mockConfig) {

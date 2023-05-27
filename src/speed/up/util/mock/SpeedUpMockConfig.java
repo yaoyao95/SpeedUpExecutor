@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 public class SpeedUpMockConfig {
     public int taskCount = 100_000;
     //平均多少毫秒，发送一个task请求
-    public int avgIntervalPerTaskMillSec = 3000;
+    public int avgIntervalPerTaskMillSec = 1000;
 
     //每个任务多少个子查询 1000
     public int queryCountPerTask = 25;
