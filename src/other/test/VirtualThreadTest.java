@@ -1,3 +1,5 @@
+package other.test;
+
 import java.lang.management.*;
 import java.util.ArrayList;
 import java.util.List;
