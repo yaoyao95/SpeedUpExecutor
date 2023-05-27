@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 纯加速执行器，通过线程池，并发执行任务的子任务来加速整个任务的执行。基本上，任务的性能都会提高。<br>
