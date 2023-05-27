@@ -118,15 +118,18 @@ public class SpeedUpExecutor {
 
     public static void main(String[] args) throws InterruptedException {
         SpeedUpMockConfig mockConfig = new SpeedUpMockConfig();
+        mockConfig.avgIntervalPerTaskMillSec = 50; //50,若无超时，就是达到20 qps
         testAvgExecuteTime(mockConfig);
+
         SpeedUpConfig config = new SpeedUpConfig();
-        config.setEnableMonitor(false);
+        config.setEnableMonitor(true);
         config.setEnable(true);
-        config.setMonitorInitPeriodInSec(1);
+        config.setMonitorInitPeriodInSec(5);
+        config.setMaximumPoolSize(400);
         SpeedUpExecutor executor = new SpeedUpExecutor(config);
 
         //----模拟业务请求----
-        List<Runnable> runnables = new ArrayList<>();
+        List<Runnable> subtasks = new ArrayList<>();
         ThreadPoolExecutor webContainerThreadPoolExecutor = new ThreadPoolExecutor(1000, 1000, 30000, TimeUnit.SECONDS,
 //                new LinkedBlockingQueue<>(1),
 //                    new SynchronousQueue<>(),
@@ -136,7 +139,7 @@ public class SpeedUpExecutor {
         webContainerThreadPoolExecutor.allowCoreThreadTimeOut(true);
 
         for (int i = 0; i < mockConfig.queryCountPerTask; i++) {
-            runnables.add(() -> {
+            subtasks.add(() -> {
                 SpeedUpMockConfig.sleep(mockConfig.calcExecuteTimeForOneQuery());
             });
         }
@@ -147,7 +150,7 @@ public class SpeedUpExecutor {
             Thread.sleep((long) (Math.random() * mockConfig.avgIntervalPerTaskMillSec * 2));
             mockConfig.webContainerThreadPoolExecutor().submit(() -> {
                 try {
-                    executor.batchExecute(runnables.toArray(Runnable[]::new));
+                    executor.batchExecute(subtasks.toArray(Runnable[]::new));
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 } finally {
