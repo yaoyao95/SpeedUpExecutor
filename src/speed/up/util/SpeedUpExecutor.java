@@ -27,12 +27,13 @@ public class SpeedUpExecutor {
         if (null == mySpeedUpPoolExecutor) {
             //1、队列满了，为了防止饿死，降级给调用方，用自己的线程（一般来自web容器）来单线阻塞地程顺序执行。同时预估在队列里，如果很快会被执行，可以继续等待，毕竟并发执行更快。
             //2、不管采用什么拒绝策略，用自己的线程来单线阻塞地程顺序执行，那么当前线程就无法继续添加任务到线程池里，线程池里的本任务相关的子查询，即使继续执行，也没用，抛弃了。
+            BlockingQueue<Runnable> workQueue = config.isUseSynchronousQueue() ? new SynchronousQueue<>(true) : new ArrayBlockingQueue<>(config.getBlockQueueSizeForArray());
             mySpeedUpPoolExecutor = new ThreadPoolExecutor(config.getCorePoolSize(), config.getMaximumPoolSize(), config.getKeepAliveTime(), TimeUnit.SECONDS
 //                    ,new ArrayBlockingQueue<>(config.getBlockQueueSize()),new ThreadPoolExecutor.AbortPolicy()
-                    ,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy()
+                    ,workQueue, new ThreadPoolExecutor.AbortPolicy()
             );
 //            mySpeedUpPoolExecutor.prestartAllCoreThreads();
-            mySpeedUpPoolExecutor.allowCoreThreadTimeOut(true);
+            mySpeedUpPoolExecutor.allowCoreThreadTimeOut(config.isAllowCoreThreadTimeOut());
             if (null != config && config.isEnableMonitor()) {
                 scheduledMonitorExecutorService = Executors.newScheduledThreadPool(1);
                 SpeedUpStatisticWrapper statisticWrapper = new SpeedUpStatisticWrapper();
@@ -59,7 +60,9 @@ public class SpeedUpExecutor {
     public SpeedUpConfig getConfig() {
         return config;
     }
-    /**用线程池来并行执行这些子任务，所有任务执行完后才返回*/
+    /**用线程池来并行执行这些子任务，所有任务执行完后才返回<br>
+     * 注意，极端情况下(并发很高且工作线程不足时，小概率会发生)，同一个子任务可能会重复执行两次，调用方需要把子任务设计成重复执行也无副作用。
+     * */
     public void batchExecute(Runnable... subTasks) throws InterruptedException {
         long start = System.currentTimeMillis();
 //        System.out.println("-------------speed up executor start");
@@ -87,12 +90,12 @@ public class SpeedUpExecutor {
                         });
                     }
                 } else {
-                    //worker不够分配任务，交由当前线程执行 (统计不一定准确，可能有几个进队列了)
+                    //worker不够分配任务，交由当前线程执行 (统计不一定准确，可能有几个进队列了(若队列不满))
                     ifWorkerThreadEnough = false;
                 }
             }
-        } catch (Exception e) {
-            //一般不会进来这里, 进来救表示worker 不够了，原因一般是 统计worker知识预估，不一定准确
+        } catch (RejectedExecutionException e) {
+            //一般不会进来这里,进来都是因为被拒绝了, 表示worker不够且队列满了，原因一般是 统计worker数只是预估，不一定100%准确
             e.printStackTrace();
             Arrays.stream(subTasks).forEach(Runnable::run);
             System.out.println("thread worker is not enough, but it shouldn't. degrade to execute Serially. "+ " done, Time-consuming-"+(System.currentTimeMillis() - start)+"ms");
@@ -103,7 +106,7 @@ public class SpeedUpExecutor {
             System.out.println("thread worker is not enough. degrade to execute Serially. "  + " done, Time-consuming-"+(System.currentTimeMillis() - start) + "ms");
             return;
         }
-        //worker 足够的情况
+        //worker 足够的情况（但如果使用了队列，且当时队列未满，则有可能有部分任务在队列里）
         if (!latchForPerTask.await(config.getMaxTimeLimitForOneAggregateExecuteInMillSec(),TimeUnit.MILLISECONDS)) {
             //---超时---
             Arrays.stream(subTasks).forEach(Runnable::run);
@@ -117,7 +120,7 @@ public class SpeedUpExecutor {
 
     public static void main(String[] args) throws InterruptedException {
         SpeedUpMockConfig mockConfig = new SpeedUpMockConfig();
-        mockConfig.avgIntervalPerTaskMillSec = 50; //50,若无超时，就是达到20 qps
+        mockConfig.avgIntervalPerTaskMillSec = 50; //50,若无超时，就是达到20 qps.   20,若无超时，就是达到50 qps
         testAvgExecuteTime(mockConfig);
 
         SpeedUpConfig config = new SpeedUpConfig();

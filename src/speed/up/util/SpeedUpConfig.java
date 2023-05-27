@@ -4,26 +4,40 @@ import java.util.concurrent.TimeUnit;
 
 public class SpeedUpConfig {
     private boolean enable = true;
+    /**io 密集型的，建议corePoolSize 和 maximumPoolSize一样大。 因为空闲时会回收。 cpu密集型，两者都设小点，不大于CPU核心数为好。**/
+    private int corePoolSize = 300;
+    /**io 密集型的，建议corePoolSize 和 maximumPoolSize一样大。 因为空闲时会回收。 cpu密集型，两者都设小点，不大于CPU核心数为好。**/
+    private int maximumPoolSize = 300;
+    private long keepAliveTime = 60;
+    /**是否使用同步队列，否则使用ArrayBlockingQueue*/
+    private boolean useSynchronousQueue = true;
+    /** 针对io密集型情况:<br>
+     * useSynchronousQueue为true时，blockQueueSizeForArray设置是无效的。但需要配置 bufferThreadWorkSizeForInaccuracyOfActiveCount，一般5即可。<br>
+     * useSynchronousQueue为false时需要设置。 blockQueueSizeForArray一般设置为接近，但大于一个任务可拆分成子任务的数值，比如一个task的子任务数的2倍 <br><br>
+     *
+     * 这两个配置，都是 因统计工作线程不准确，认为还有空闲的工作线程能足够被分配去执行子任务，但实际上空闲线程不足，有部分子任务没有被分配工作线程。<br>
+     * 对应的场景都是超高并发，实际qps远大于预估时，才可能触发这种有部分子任务被分配工作线程了，而部分没有情况。 设置这两参数能微调性能，对这种极端情况，有一定效果。<br><br>
+     *
+     * 1.采用同步队列的情况（即队列的size是空），遇到上述极端场景时，预留少量几个worker作为buffer，就能极大概率避免有些任务在线程池被分配了工作线程，在执行了，而有些子任务放不进线程池，没分到工作线程，
+     * 而降级为用调用方线程来串行执行所有子任务，而导致这个任务变慢。浪费了分配了子任务的工作线程，白执行了这部分的子任务。 但buffer不能设置太大，使有效工作线程减少太多<br>
+     *
+     * 2、使用有界队列时，遇到上述极端场景时，若能等待一定时间（maxTimeLimitForOneAggregateExecuteInMillSec），等所有子任务执行完，则响应更快。
+     * 但队列不能太大，大了有可能会饿死。导致整体更慢.所以需要一个合适的大小。(虽然理论上一般占用的最大的队列，不会大于子任务数)<br>
+     * */
+    private int bufferThreadWorkSizeForInaccuracyOfActiveCount = 5;
+    /**见配置bufferThreadWorkSizeForInaccuracyOfActiveCount说明*/
+    private int blockQueueSizeForArray = 50;
+
+
+    /**单个任务的最大耗时限制，超过则降级，用当前线程顺序查询。认为线程池、并发出了问题，若认为没有问题，可以把这个数字设置很大*/
+    private long maxTimeLimitForOneAggregateExecuteInMillSec = 20_000;
+    // ---监控配置---
     private boolean enableMonitor = true;
     private int monitorInitDelayInSec = 1;
     private int monitorInitPeriodInSec = 60 * 10;
 
-    private int corePoolSize = 10;
-    private int maximumPoolSize = 300;
-    private long keepAliveTime = 60;
-    /**预留几个 工作线程 ，避免统计活跃的工作线程数量的 不准确而导致有些任务需要当前线程执行，而使任务性能变慢*/
-    private int bufferThreadWorkSizeForInaccuracyOfActiveCount = 5;
-    /** 废弃.设置了也没用， 因为，因统计工作线程不准确而把子任务塞入到队列里，很影响性能，高并发时，甚至需要30以上大小的队列，才能较大概率避免队列也满了，但队列大了有可能会饿死。导致产生任务反而变慢的副作用 <br>
-     * 而采用同步队列的情况（即队列的size是空），预留少量几个worker，就能大概率应对工作线程数量统计的不准确问题而导致任务执行变慢。
-     * 线程池阻塞队列的长度设置。本加速工具，采用线程池来自行，当有足有的空闲工作线程时，才会并发执行子任务，否则将降级为调用者的线程来串行执行。<br>
-     * 但统计空闲工作线程的数量市预估的，不是100%准确，所以可能有部分子任务没有分配到工作线程，而被放入队列种。<br>
-     * 同时为防止饿死，请不要设置得太大，以免统计因预估过于不准确，而饿死。(但一般统计非常精确，可能高并发，小任务的情况会统计不准确)
-     * */
-    private int blockQueueSize =  25;
-
+    private boolean allowCoreThreadTimeOut = true;
     private TimeUnit timeUnit = TimeUnit.SECONDS;
-    //单个任务的最大耗时限制，超过则降级，用当前线程顺序查询。认为线程池、并发出了问题，若认为没有问题，可以把这个数字设置很大
-    private long maxTimeLimitForOneAggregateExecuteInMillSec = 15_000;
 
 
     public int getCorePoolSize() {
@@ -98,8 +112,8 @@ public class SpeedUpConfig {
         this.monitorInitPeriodInSec = monitorInitPeriodInSec;
     }
 
-    public int getBlockQueueSize() {
-        return blockQueueSize;
+    public int getBlockQueueSizeForArray() {
+        return blockQueueSizeForArray;
     }
 
     public int getBufferThreadWorkSizeForInaccuracyOfActiveCount() {
@@ -108,5 +122,25 @@ public class SpeedUpConfig {
 
     public void setBufferThreadWorkSizeForInaccuracyOfActiveCount(int bufferThreadWorkSizeForInaccuracyOfActiveCount) {
         this.bufferThreadWorkSizeForInaccuracyOfActiveCount = bufferThreadWorkSizeForInaccuracyOfActiveCount;
+    }
+
+    public boolean isUseSynchronousQueue() {
+        return useSynchronousQueue;
+    }
+
+    public void setUseSynchronousQueue(boolean useSynchronousQueue) {
+        this.useSynchronousQueue = useSynchronousQueue;
+    }
+
+    public void setBlockQueueSizeForArray(int blockQueueSizeForArray) {
+        this.blockQueueSizeForArray = blockQueueSizeForArray;
+    }
+
+    public boolean isAllowCoreThreadTimeOut() {
+        return allowCoreThreadTimeOut;
+    }
+
+    public void setAllowCoreThreadTimeOut(boolean allowCoreThreadTimeOut) {
+        this.allowCoreThreadTimeOut = allowCoreThreadTimeOut;
     }
 }

@@ -12,13 +12,15 @@ public class SpeedUpStatisticWrapper {
         private int activeThreadCount;
         private int notActiveThreadCount;
         private int allThreadCount;
-
         private long osThreadCount;
+        private int queueSize;
+
+        //private BlockingQueue queueDetail;
+
         private long totalMemoryInMB;
         private long freeMemoryInMB;
         private long maxMemoryInMB;
 
-        //        public BlockingQueue queueDetail;
         private MemoryUsage heapMemoryUsage;
         private MemoryUsage nonHeapMemoryUsage;
 
@@ -29,6 +31,7 @@ public class SpeedUpStatisticWrapper {
                     ", notActiveThreadCount=" + notActiveThreadCount +
                     ", allThreadCount=" + allThreadCount +
                     ", osThreadCount=" + osThreadCount +
+                    ", queueSize=" + queueSize +
                     ", totalMemoryInMB=" + totalMemoryInMB +
                     ", freeMemoryInMB=" + freeMemoryInMB +
                     ", maxMemoryInMB=" + maxMemoryInMB +
@@ -69,6 +72,7 @@ public class SpeedUpStatisticWrapper {
         oneStatistic.activeThreadCount = mySpeedUpPoolExecutor.getActiveCount();
         oneStatistic.allThreadCount = mySpeedUpPoolExecutor.getMaximumPoolSize();
         oneStatistic.notActiveThreadCount = mySpeedUpPoolExecutor.getMaximumPoolSize() - mySpeedUpPoolExecutor.getActiveCount();
+        oneStatistic.queueSize = mySpeedUpPoolExecutor.getQueue().size();
         statisticWrapper.getStatistics().add(oneStatistic);
 
         statisticWrapper.maxStatistic.osThreadCount = Math.max(statisticWrapper.maxStatistic.osThreadCount, osThreadCount);
@@ -78,10 +82,12 @@ public class SpeedUpStatisticWrapper {
         statisticWrapper.maxStatistic.activeThreadCount = Math.max(statisticWrapper.maxStatistic.activeThreadCount, mySpeedUpPoolExecutor.getLargestPoolSize());
         statisticWrapper.maxStatistic.notActiveThreadCount = Math.max(statisticWrapper.maxStatistic.notActiveThreadCount, oneStatistic.notActiveThreadCount);
         statisticWrapper.maxStatistic.allThreadCount = Math.max(statisticWrapper.maxStatistic.allThreadCount, oneStatistic.allThreadCount);
+        statisticWrapper.maxStatistic.queueSize =  Math.max(statisticWrapper.maxStatistic.queueSize, oneStatistic.queueSize);
 
-        System.out.println("current max statistic: " + statisticWrapper.maxStatistic.toString());
-        System.out.println("current statistic: " + oneStatistic.toString());
-        if (statisticWrapper.monitorTime % 10 == 0) {
+        System.out.println("current max statistic: " + statisticWrapper.maxStatistic);
+        System.out.println("current statistic: " + oneStatistic);
+
+        if (statisticWrapper.monitorTime % 30 == 0) {
             System.out.println("all statistic. 0、monitor times: "+ statisticWrapper.monitorTime +" 1、max statistic: " + statisticWrapper.maxStatistic.toString() + " .  2、statistics: " + statisticWrapper.getStatistics().toString());
         }
     }
