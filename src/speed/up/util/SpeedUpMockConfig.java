@@ -1,4 +1,4 @@
-package speed.up.util.mock;
+package speed.up.util;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -13,15 +13,17 @@ public class SpeedUpMockConfig {
     //每个任务多少个子查询 1000
     public int queryCountPerTask = 25;
     //每个子查询平均耗时, 用于假定普通情况下，一个查询，耗时范围为[0.25,1.25)之间
-    public  int avgPerQueryTimeConsumingMillSec = 500;
+    public int avgPerQueryTimeConsumingMillSec = 500;
     //毛刺子查询最大查询耗时， 用于发生毛刺的情况下，假定毛刺耗时范围为[0.25Max,Max)
-    public  int maxVeiningQueryTimeConsuming = 4000;
+    public int maxVeiningQueryTimeConsuming = 4000;
     //每个子查询，平均毛刺概率
     public double avgRateForVein = 0.10;
     //监控间隔
     public final CountDownLatch latchForAllTask = new CountDownLatch(taskCount);
     //模拟web容器的线程池
     private ThreadPoolExecutor webContainerThreadPoolExecutor;
+
+
     public ThreadPoolExecutor webContainerThreadPoolExecutor(){
         if (null == webContainerThreadPoolExecutor) {
             webContainerThreadPoolExecutor = new ThreadPoolExecutor(1000, 1000, 30000, TimeUnit.SECONDS,
