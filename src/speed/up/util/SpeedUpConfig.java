@@ -3,12 +3,26 @@ package speed.up.util;
 import java.util.concurrent.TimeUnit;
 
 public class SpeedUpConfig {
+    //--- 核心配置 ---
     private boolean enable = true;
     /**io 密集型的，建议corePoolSize 和 maximumPoolSize一样大。 因为空闲时会回收。 cpu密集型，两者都设小点，不大于CPU核心数为好。**/
     private int corePoolSize = 300;
     /**io 密集型的，建议corePoolSize 和 maximumPoolSize一样大。 因为空闲时会回收。 cpu密集型，两者都设小点，不大于CPU核心数为好。**/
     private int maximumPoolSize = 300;
-    private long keepAliveTime = 60;
+    private long keepAliveTimeInSec = 60;
+
+    // ---监控配置---
+    private boolean enableMonitor = true;
+    private int monitorInitDelayInSec = 1;
+    private int monitorInitPeriodInSec = 60 * 10;
+
+    private boolean allowCoreThreadTimeOut = true;
+    private TimeUnit timeUnit = TimeUnit.SECONDS;
+
+    //次要配置
+    /**是否使用策略： 仅当有足够的线程worker被分配给所有子任务时，才使用线程池加速功能.
+     * false的话，加速效果对所有任务一视同仁，整体都加速，线程池配置一定的情况下，随着并发的增高，加速效果会越来越低。 true的话，任务要不 完全加速，要不 完全不加速，两个极端。*/
+    private boolean speedUpOnlyWhenThereIsEnoughWorkersForAllSubTasks = false;
     /**是否使用同步队列，否则使用ArrayBlockingQueue*/
     private boolean useSynchronousQueue = true;
     /** 针对io密集型情况:<br>
@@ -31,14 +45,21 @@ public class SpeedUpConfig {
 
     /**单个任务的最大耗时限制，超过则降级，用当前线程顺序查询。认为线程池、并发出了问题，若认为没有问题，可以把这个数字设置很大*/
     private long maxTimeLimitForOneAggregateExecuteInMillSec = 20_000;
-    // ---监控配置---
-    private boolean enableMonitor = true;
-    private int monitorInitDelayInSec = 1;
-    private int monitorInitPeriodInSec = 60 * 10;
-
-    private boolean allowCoreThreadTimeOut = true;
-    private TimeUnit timeUnit = TimeUnit.SECONDS;
-
+    /**io 获取密集型配置*/
+    public static SpeedUpConfig forIoIntensive(int poolSize, long keepAliveTimeInSec){
+        SpeedUpConfig speedUpConfig = new SpeedUpConfig();
+        speedUpConfig.corePoolSize = poolSize;
+        speedUpConfig.maximumPoolSize = poolSize;
+        speedUpConfig.keepAliveTimeInSec = keepAliveTimeInSec;
+        return speedUpConfig;
+    }
+    /**io 获取密集型配置*/
+    public static SpeedUpConfig forIoIntensive(int poolSize){
+        SpeedUpConfig speedUpConfig = new SpeedUpConfig();
+        speedUpConfig.corePoolSize = poolSize;
+        speedUpConfig.maximumPoolSize = poolSize;
+        return speedUpConfig;
+    }
 
     public int getCorePoolSize() {
         return corePoolSize;
@@ -56,12 +77,12 @@ public class SpeedUpConfig {
         this.maximumPoolSize = maximumPoolSize;
     }
 
-    public long getKeepAliveTime() {
-        return keepAliveTime;
+    public long getKeepAliveTimeInSec() {
+        return keepAliveTimeInSec;
     }
 
-    public void setKeepAliveTime(long keepAliveTime) {
-        this.keepAliveTime = keepAliveTime;
+    public void setKeepAliveTimeInSec(long keepAliveTimeInSec) {
+        this.keepAliveTimeInSec = keepAliveTimeInSec;
     }
 
     public TimeUnit getTimeUnit() {
@@ -142,5 +163,13 @@ public class SpeedUpConfig {
 
     public void setAllowCoreThreadTimeOut(boolean allowCoreThreadTimeOut) {
         this.allowCoreThreadTimeOut = allowCoreThreadTimeOut;
+    }
+
+    public boolean isSpeedUpOnlyWhenThereIsEnoughWorkersForAllSubTasks() {
+        return speedUpOnlyWhenThereIsEnoughWorkersForAllSubTasks;
+    }
+
+    public void setSpeedUpOnlyWhenThereIsEnoughWorkersForAllSubTasks(boolean speedUpOnlyWhenThereIsEnoughWorkersForAllSubTasks) {
+        this.speedUpOnlyWhenThereIsEnoughWorkersForAllSubTasks = speedUpOnlyWhenThereIsEnoughWorkersForAllSubTasks;
     }
 }

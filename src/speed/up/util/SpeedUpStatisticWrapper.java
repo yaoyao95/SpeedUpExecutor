@@ -67,7 +67,7 @@ public class SpeedUpStatisticWrapper {
     }
 
     // 保存平台线程的创建的最大总数
-    public static void monitor(SpeedUpStatisticWrapper statisticWrapper, ThreadPoolExecutor mySpeedUpPoolExecutor) {
+    public static void monitor(SpeedUpStatisticWrapper statisticWrapper, SpeedUpExecutor speedUpExecutor) {
         statisticWrapper.monitorTime = statisticWrapper.monitorTime + 1;
         int osThreadCount = ManagementFactory.getThreadMXBean().getThreadCount();
         MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
@@ -85,11 +85,12 @@ public class SpeedUpStatisticWrapper {
         oneStatistic.heapMemoryUsage = heapMemoryUsage;
         oneStatistic.nonHeapMemoryUsage = nonHeapMemoryUsage;
 
+        ThreadPoolExecutor mySpeedUpPoolExecutor = speedUpExecutor.mySpeedUpPoolExecutor;
         oneStatistic.activeThreadCount = mySpeedUpPoolExecutor.getActiveCount();
         oneStatistic.allThreadCount = mySpeedUpPoolExecutor.getMaximumPoolSize();
         oneStatistic.notActiveThreadCount = mySpeedUpPoolExecutor.getMaximumPoolSize() - mySpeedUpPoolExecutor.getActiveCount();
         oneStatistic.queueSize = mySpeedUpPoolExecutor.getQueue().size();
-        long completedTaskCount = mySpeedUpPoolExecutor.getCompletedTaskCount();
+        long completedTaskCount = speedUpExecutor.completeTaskCount.get();
         long currentTimeMillis = System.currentTimeMillis();
         oneStatistic.qpsOfSubTask = (completedTaskCount - statisticWrapper.lastTimeCompleteSubTaskCount) / ((currentTimeMillis - statisticWrapper.lastTimeCompleteSubTaskCountTime) / 1000.0);
         statisticWrapper.lastTimeCompleteSubTaskCount = completedTaskCount;
