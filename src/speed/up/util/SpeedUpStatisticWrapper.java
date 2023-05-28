@@ -14,6 +14,7 @@ public class SpeedUpStatisticWrapper {
         private int allThreadCount;
         private long osThreadCount;
         private int queueSize;
+        private double qpsOfSubTask;
 
         //private BlockingQueue queueDetail;
 
@@ -32,6 +33,7 @@ public class SpeedUpStatisticWrapper {
                     ", allThreadCount=" + allThreadCount +
                     ", osThreadCount=" + osThreadCount +
                     ", queueSize=" + queueSize +
+                    ", qpsOfSubTask=" + qpsOfSubTask +
                     ", totalMemoryInMB=" + totalMemoryInMB +
                     ", freeMemoryInMB=" + freeMemoryInMB +
                     ", maxMemoryInMB=" + maxMemoryInMB +
@@ -50,6 +52,20 @@ public class SpeedUpStatisticWrapper {
         return maxStatistic;
     }
     private long monitorTime = 0;
+    private long lastTimeCompleteSubTaskCount = 0;
+    private long lastTimeCompleteSubTaskCountTime = System.currentTimeMillis();
+
+    @Override
+    public String toString() {
+        return "SpeedUpStatisticWrapper{" +
+                "statistics=" + statistics +
+                ", maxStatistic=" + maxStatistic +
+                ", monitorTime=" + monitorTime +
+                ", lastTimeCompleteSubTaskCount=" + lastTimeCompleteSubTaskCount +
+                ", lastTimeCompleteSubTaskCountTime=" + lastTimeCompleteSubTaskCountTime +
+                '}';
+    }
+
     // 保存平台线程的创建的最大总数
     public static void monitor(SpeedUpStatisticWrapper statisticWrapper, ThreadPoolExecutor mySpeedUpPoolExecutor) {
         statisticWrapper.monitorTime = statisticWrapper.monitorTime + 1;
@@ -73,6 +89,11 @@ public class SpeedUpStatisticWrapper {
         oneStatistic.allThreadCount = mySpeedUpPoolExecutor.getMaximumPoolSize();
         oneStatistic.notActiveThreadCount = mySpeedUpPoolExecutor.getMaximumPoolSize() - mySpeedUpPoolExecutor.getActiveCount();
         oneStatistic.queueSize = mySpeedUpPoolExecutor.getQueue().size();
+        long completedTaskCount = mySpeedUpPoolExecutor.getCompletedTaskCount();
+        long currentTimeMillis = System.currentTimeMillis();
+        oneStatistic.qpsOfSubTask = (completedTaskCount - statisticWrapper.lastTimeCompleteSubTaskCount) / ((currentTimeMillis - statisticWrapper.lastTimeCompleteSubTaskCountTime) / 1000.0);
+        statisticWrapper.lastTimeCompleteSubTaskCount = completedTaskCount;
+        statisticWrapper.lastTimeCompleteSubTaskCountTime = currentTimeMillis;
         statisticWrapper.getStatistics().add(oneStatistic);
 
         statisticWrapper.maxStatistic.osThreadCount = Math.max(statisticWrapper.maxStatistic.osThreadCount, osThreadCount);
@@ -83,12 +104,12 @@ public class SpeedUpStatisticWrapper {
         statisticWrapper.maxStatistic.notActiveThreadCount = Math.max(statisticWrapper.maxStatistic.notActiveThreadCount, oneStatistic.notActiveThreadCount);
         statisticWrapper.maxStatistic.allThreadCount = Math.max(statisticWrapper.maxStatistic.allThreadCount, oneStatistic.allThreadCount);
         statisticWrapper.maxStatistic.queueSize =  Math.max(statisticWrapper.maxStatistic.queueSize, oneStatistic.queueSize);
-
+        statisticWrapper.maxStatistic.qpsOfSubTask = Math.max(statisticWrapper.maxStatistic.qpsOfSubTask, oneStatistic.qpsOfSubTask);
         System.out.println("current max statistic: " + statisticWrapper.maxStatistic);
         System.out.println("current statistic: " + oneStatistic);
 
         if (statisticWrapper.monitorTime % 30 == 0) {
-            System.out.println("all statistic. 0、monitor times: "+ statisticWrapper.monitorTime +" 1、max statistic: " + statisticWrapper.maxStatistic.toString() + " .  2、statistics: " + statisticWrapper.getStatistics().toString());
+            System.out.println("all statistic :" + statisticWrapper);
         }
     }
 }
